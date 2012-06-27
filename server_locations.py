@@ -56,7 +56,7 @@ def mergeDuplicates( PointsMap ):
 
     return uniquePointsMap
 
-def drawBarChart( serverNames, histDataList ):
+def drawBarChart( serverNames, histDataList, maxIndex ):
     fig = plt.figure()
     ax = fig.add_subplot( 1,1,1 )
 
@@ -200,8 +200,11 @@ def main():
     plt.show()
 
     # Drawing histogram from the data
-    histDataList = np.array( [ y for (x,y) in histogramData.items() ] )
-    drawBarChart( serverName, histDataList )
+    histDataList = [ y for (x,y) in histogramData.items() ]
+    maxIndex = histDataList.index( max( histDataList ) )
+    print 'The most loaded server:', serverName[ maxIndex ], 'at index', maxIndex
+    histDataList = np.array( histDataList )
+    drawBarChart( serverName, histDataList, maxIndex )
     plt.show()
 
 if __name__ == "__main__":
