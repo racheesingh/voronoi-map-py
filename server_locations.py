@@ -16,7 +16,11 @@ def plotDiagramFromLattice( ax, voronoiLattice, map ):
     voronoiPolygons = {}
     
     # Plotting the Polygons returned by py_geo_voronoi
-    for serialNo, data in voronoiLattice.items():
+    N = len( voronoiLattice.items() )
+    for x in range( N ):
+    #for serialNo, data in voronoiLattice.items():
+        data = voronoiLattice[ x ]
+        serialNo = x
         polygon_data = data[ 'obj_polygon']
         pointList = []
 
@@ -25,8 +29,8 @@ def plotDiagramFromLattice( ax, voronoiLattice, map ):
             pointList.append( pointMap )
 
         ax.add_patch( Polygon( pointList, fill=0, edgecolor='black' ))
-        #if serialNo == 6:
-        #    ax.add_patch( Polygon( pointList, fill="red", edgecolor='red' ))
+        #if serialNo == 7:
+        #    ax.add_patch( Polygon( pointList, fill="r", edgecolor='red' ))
         voronoiPolygons[ serialNo ] = np.array( pointList )
 
     return voronoiPolygons
@@ -130,9 +134,7 @@ def main():
     # Many server sites map to the same latitude and longitudes
     # Lets merge the duplicates
     PointsMap = mergeDuplicates( PointsMap )
-
-    serverName = PointsMap.keys()
-
+    
     # Method provided by py_geo_voronoi, returns a dictionary
     # of dictionaries, each sub-dictionary carrying information 
     # about a polygon in the Voronoi diagram.
@@ -141,6 +143,11 @@ def main():
     # here, on a Basemap.
     voronoiLattice = voronoi_poly.VoronoiPolygons(
         PointsMap, BoundingBox="W", PlotMap=False )
+
+    serverNames = []
+    # Getting server names in order
+    for x in range( len( PointsMap ) ):
+        serverNames.append( voronoiLattice[ x ][ 'info' ] )
 
     # Creating a Basemap object with mill projection
     map = Basemap(projection='mill',lon_0=0,resolution='c')    
@@ -166,24 +173,22 @@ def main():
     # Plotting all the servers with a scatter plot
     map.scatter( x, y, c='black', marker='.', zorder = 2)
 
-    ax = plt.gca()
-    # Plotting the Polygons returned by py_geo_voronoi
-    voronoiPolygons = plotDiagramFromLattice( ax, voronoiLattice, map )
-
     # Processing networks from Whois database
     # and getting each network's lat, long
     networkLatLon = getNetworkLocations( map )
 
+    ax = plt.gca()
+    # Plotting the Polygons returned by py_geo_voronoi
+    voronoiPolygons = plotDiagramFromLattice( ax, voronoiLattice, map )
+
     histogramData = {}
     histogramData = histogramData.fromkeys( 
-        range( 0, len( voronoiPolygons ) ), 0 )
+        range( 0, len( serverNames ) ), 0 )
 
     for net in networkLatLon:
         net = np.array( [ net ] )
         for serialNo, polygon in voronoiPolygons.items():
-            #print "For server Number " + str( serialNo ) + " checking.."
             if nx.points_inside_poly( net, polygon ):
-                #print "Got one!"
                 histogramData[ serialNo ] += 1
                 break
 
@@ -199,12 +204,13 @@ def main():
     plt.savefig( 'voronoi-py.png' )
     plt.show()
 
-    # Drawing histogram from the data
     histDataList = [ y for (x,y) in histogramData.items() ]
     maxIndex = histDataList.index( max( histDataList ) )
-    print 'The most loaded server:', serverName[ maxIndex ], 'at index', maxIndex
+    print 'The most loaded server:', serverNames[ maxIndex ], 'at index', maxIndex
     histDataList = np.array( histDataList )
-    drawBarChart( serverName, histDataList, maxIndex )
+
+    # Drawing histogram from the data
+    drawBarChart( serverNames, histDataList, maxIndex )
     plt.show()
 
 if __name__ == "__main__":
