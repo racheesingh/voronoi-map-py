@@ -14,7 +14,7 @@ import matplotlib.nxutils as nx
 
 def plotDiagramFromLattice( ax, voronoiLattice, map ):
     voronoiPolygons = {}
-    
+    #print voronoiLattice
     # Plotting the Polygons returned by py_geo_voronoi
     N = len( voronoiLattice.items() )
     for x in range( N ):
@@ -28,11 +28,12 @@ def plotDiagramFromLattice( ax, voronoiLattice, map ):
             pointMap = map( point[0], point[1] )
             pointList.append( pointMap )
 
-        ax.add_patch( Polygon( pointList, fill=0, edgecolor='black' ))
-        #if serialNo == 7:
-        #    ax.add_patch( Polygon( pointList, fill="r", edgecolor='red' ))
+        ax.add_patch( Polygon( pointList, fill=0, edgecolor='red' ))
+        if serialNo == 44:
+            print data[ 'info' ]
+        #    ax.add_patch( Polygon( pointList, fill=1, edgecolor='black' ))
         voronoiPolygons[ serialNo ] = np.array( pointList )
-
+    
     return voronoiPolygons
 
 def mergeDuplicates( PointsMap ):
@@ -63,7 +64,7 @@ def mergeDuplicates( PointsMap ):
 def drawBarChart( serverNames, histDataList, maxIndex ):
     fig = plt.figure()
     ax = fig.add_subplot( 1,1,1 )
-
+    
     N = len( histDataList )
     ind = range( N )
     ax.bar( ind, histDataList, facecolor='#777700',
@@ -89,14 +90,13 @@ def getNetworkLocations( map ):
     file = open( "GeoIPCountryWhois.csv", "r" )
     networkLatLon = []
 
-    #for x in range( 50000 ):
-    #while True:
-    for x in range( 160222 ):
+    for x in range( 160223 ):
         try:
             whois = file.readline().split(",")
         except EOFError:
             break
         networkFromIP = whois[0].strip( '"' )
+
         gi = pygeoip.GeoIP( "/usr/local/share/GeoIP/GeoIPCity.dat",
                             pygeoip.STANDARD )
         try:
@@ -144,10 +144,18 @@ def main():
     voronoiLattice = voronoi_poly.VoronoiPolygons(
         PointsMap, BoundingBox="W", PlotMap=False )
 
+    numVoronoiCells = len( voronoiLattice.keys() )
+    
     serverNames = []
-    # Getting server names in order
-    for x in range( len( PointsMap ) ):
+    serialNum = []
+    lat = []
+    lon = []
+    # Getting server names and lat, lon in order
+    for x in range( numVoronoiCells ):
+        serialNum.append( x )
         serverNames.append( voronoiLattice[ x ][ 'info' ] )
+        lat.append( voronoiLattice[ x ][ 'coordinate' ][ 1 ] )
+        lon.append( voronoiLattice[ x ][ 'coordinate' ][ 0 ] )
 
     # Creating a Basemap object with mill projection
     map = Basemap(projection='mill',lon_0=0,resolution='c')    
@@ -173,6 +181,19 @@ def main():
     # Plotting all the servers with a scatter plot
     map.scatter( x, y, c='black', marker='.', zorder = 2)
 
+    # Test plot of serial number 23
+    #x1, y1 = map( lon[23], lat[23] )
+    #map.plot( x1, y1, c="red", marker="o")
+
+    # Adding annotations
+    for name, a, b in zip(serialNum, x, y):
+        plt.annotate(
+            name, 
+            xy = (a, b), xytext = (20,60),
+            textcoords = 'offset points', ha = 'right', va = 'bottom',
+            bbox = dict(boxstyle = 'round,pad=0.5', fc = 'yellow', alpha = 1.5),
+            arrowprops = dict(arrowstyle = '->', connectionstyle = 'arc3,rad=0'))
+
     # Processing networks from Whois database
     # and getting each network's lat, long
     networkLatLon = getNetworkLocations( map )
@@ -192,11 +213,9 @@ def main():
                 histogramData[ serialNo ] += 1
                 break
 
-    print histogramData
+    #print histogramData
 
     totalNetworks = sum( [ y for (x, y) in histogramData.items() ] )
-    print totalNetworks, len(voronoiPolygons)
-            
         #if nx.points_inside_poly( points, verts )[0]:
         #    ax.add_patch( Polygon( pointList, fill=0, edgecolor='red' ))
 
@@ -212,6 +231,9 @@ def main():
     # Drawing histogram from the data
     drawBarChart( serverNames, histDataList, maxIndex )
     plt.show()
-
+    print 'Printing server names and their corresponding serial numbers'
+    for i in serialNum:
+        print i, ':', voronoiLattice[ i ][ 'info' ]
+    
 if __name__ == "__main__":
     main()
