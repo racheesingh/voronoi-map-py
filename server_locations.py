@@ -11,30 +11,7 @@ from mpl_toolkits.basemap import Basemap
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import matplotlib.nxutils as nx
-
-def plotDiagramFromLattice( ax, voronoiLattice, map ):
-    voronoiPolygons = {}
-    #print voronoiLattice
-    # Plotting the Polygons returned by py_geo_voronoi
-    N = len( voronoiLattice.items() )
-    for x in range( N ):
-    #for serialNo, data in voronoiLattice.items():
-        data = voronoiLattice[ x ]
-        serialNo = x
-        polygon_data = data[ 'obj_polygon']
-        pointList = []
-
-        for point in list( polygon_data.exterior.coords ):
-            pointMap = map( point[0], point[1] )
-            pointList.append( pointMap )
-
-        ax.add_patch( Polygon( pointList, fill=0, edgecolor='red' ))
-        if serialNo == 44:
-            print data[ 'info' ]
-        #    ax.add_patch( Polygon( pointList, fill=1, edgecolor='black' ))
-        voronoiPolygons[ serialNo ] = np.array( pointList )
-    
-    return voronoiPolygons
+from cidrize import cidrize
 
 def mergeDuplicates( PointsMap ):
 
@@ -61,6 +38,27 @@ def mergeDuplicates( PointsMap ):
 
     return uniquePointsMap
 
+def plotDiagramFromLattice( ax, voronoiLattice, map ):
+    voronoiPolygons = {}
+
+    # Plotting the Polygons returned by py_geo_voronoi
+    N = len( voronoiLattice.items() )
+    for x in range( N ):
+        data = voronoiLattice[ x ]
+        serialNo = x
+        polygon_data = data[ 'obj_polygon']
+        pointList = []
+
+        for point in list( polygon_data.exterior.coords ):
+            pointMap = map( point[0], point[1] )
+            pointList.append( pointMap )
+
+        ax.add_patch( Polygon( pointList, fill=0, edgecolor='black' ))
+        voronoiPolygons[ serialNo ] = np.array( pointList )
+    
+    return voronoiPolygons
+
+
 def drawBarChart( serverNames, histDataList, maxIndex ):
     fig = plt.figure()
     ax = fig.add_subplot( 1,1,1 )
@@ -76,9 +74,6 @@ def drawBarChart( serverNames, histDataList, maxIndex ):
     # the center of the bars.
     ax.set_xticks(ind)
  
-    # Set the x tick labels to the group_labels defined above.
-    #ax.set_xticklabels(serverNames)
-    
     # Extremely nice function to auto-rotate the x axis labels.
     # It was made for dates (hence the name) but it works
     # for any long x tick labels
@@ -88,14 +83,22 @@ def drawBarChart( serverNames, histDataList, maxIndex ):
 def getNetworkLocations( map ):
 
     file = open( "GeoIPCountryWhois.csv", "r" )
-    networkLatLon = []
+    networkLatLon = {}
 
-    for x in range( 160223 ):
+    #for i in range( 160223 ):
+    for i in range( 10000 ):
         try:
             whois = file.readline().split(",")
         except EOFError:
             break
         networkFromIP = whois[0].strip( '"' )
+        networkToIP = whois[1].strip( '"' )
+
+        if networkFromIP == networkToIP:
+            continue
+
+        ip_range = str( networkFromIP ) + "-" + str( networkToIP )
+        cidr_ip = cidrize( ip_range )
 
         gi = pygeoip.GeoIP( "/usr/local/share/GeoIP/GeoIPCity.dat",
                             pygeoip.STANDARD )
@@ -105,36 +108,15 @@ def getNetworkLocations( map ):
             print 'Error in:', networkFromIP
         if gir != None:
             x,y = map( gir[ 'longitude' ], gir[ 'latitude' ] )
-            networkLatLon.append( [x, y] )
+            networkLatLon[ i ] = { 'xCoord': x, 'yCoord': y, 'cidr': cidr_ip }
     return networkLatLon
         
-def main():
-
-    PointsMap={}
-    lat = []
-    lon = []
-    # List of all server names
-    serverName = []
-
-    for line in sys.stdin:
-        data = line.strip().split( " " )
-        
-        try:
-            # Pygeoip could not find the location of the server
-            if data[ 1 ] == 'Not':
-                continue
-            lat.append( float( data[ 1 ] ) )
-            lon.append( float( data[ 2 ] ) )
-            serverName.append( data[ 0 ] )
-            PointsMap[ data[ 0 ] ]=( float( data[ 2 ] ), float( data[ 1 ] ) )
-          
-        except:
-            sys.stderr.write( "Invalid Input Line: " + line )
+def main( PointsMap ):
 
     # Many server sites map to the same latitude and longitudes
     # Lets merge the duplicates
-    PointsMap = mergeDuplicates( PointsMap )
-    
+    #PointsMap = mergeDuplicates( PointsMap )
+
     # Method provided by py_geo_voronoi, returns a dictionary
     # of dictionaries, each sub-dictionary carrying information 
     # about a polygon in the Voronoi diagram.
@@ -181,11 +163,8 @@ def main():
     # Plotting all the servers with a scatter plot
     map.scatter( x, y, c='black', marker='.', zorder = 2)
 
-    # Test plot of serial number 23
-    #x1, y1 = map( lon[23], lat[23] )
-    #map.plot( x1, y1, c="red", marker="o")
-
     # Adding annotations
+    '''
     for name, a, b in zip(serialNum, x, y):
         plt.annotate(
             name, 
@@ -193,9 +172,10 @@ def main():
             textcoords = 'offset points', ha = 'right', va = 'bottom',
             bbox = dict(boxstyle = 'round,pad=0.5', fc = 'yellow', alpha = 1.5),
             arrowprops = dict(arrowstyle = '->', connectionstyle = 'arc3,rad=0'))
-
+    '''
     # Processing networks from Whois database
     # and getting each network's lat, long
+    # Also get the cidr notation
     networkLatLon = getNetworkLocations( map )
 
     ax = plt.gca()
@@ -206,18 +186,21 @@ def main():
     histogramData = histogramData.fromkeys( 
         range( 0, len( serverNames ) ), 0 )
 
-    for net in networkLatLon:
-        net = np.array( [ net ] )
+    pdnsFile = open( "pdns-config", "w" )
+
+    for sNo, netDetail in networkLatLon.iteritems():
+        net = np.array( [ [ netDetail[ 'xCoord' ], netDetail[ 'yCoord' ] ] ] )
         for serialNo, polygon in voronoiPolygons.items():
             if nx.points_inside_poly( net, polygon ):
                 histogramData[ serialNo ] += 1
+                for cidr_net in netDetail[ 'cidr' ]:
+                    pdnsFile.write( str( cidr_net ) + ' :' + 
+                                    '127.0.0.' + str( serialNo ) + "\n" )
                 break
-
+    pdnsFile.close()
     #print histogramData
 
     totalNetworks = sum( [ y for (x, y) in histogramData.items() ] )
-        #if nx.points_inside_poly( points, verts )[0]:
-        #    ax.add_patch( Polygon( pointList, fill=0, edgecolor='red' ))
 
     plt.title( 'Server Locations Across the Globe' )
     plt.savefig( 'voronoi-py.png' )
@@ -235,5 +218,3 @@ def main():
     for i in serialNum:
         print i, ':', voronoiLattice[ i ][ 'info' ]
     
-if __name__ == "__main__":
-    main()
