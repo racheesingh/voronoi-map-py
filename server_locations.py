@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import matplotlib.nxutils as nx
 from cidrize import cidrize
+import time
 
 def mergeDuplicates( PointsMap ):
 
@@ -82,13 +83,13 @@ def drawBarChart( serverNames, histDataList, maxIndex ):
 
 def getNetworkLocations( map ):
 
-    file = open( "GeoIPCountryWhois.csv", "r" )
+    f = open( "GeoIPCountryWhois.csv", "r" )
     networkLatLon = {}
 
     #for i in range( 160223 ):
-    for i in range( 10000 ):
+    for i in range( 100 ):
         try:
-            whois = file.readline().split(",")
+            whois = f.readline().split(",")
         except EOFError:
             break
         networkFromIP = whois[0].strip( '"' )
@@ -98,6 +99,7 @@ def getNetworkLocations( map ):
             continue
 
         ip_range = str( networkFromIP ) + "-" + str( networkToIP )
+
         cidr_ip = cidrize( ip_range )
 
         gi = pygeoip.GeoIP( "/usr/local/share/GeoIP/GeoIPCity.dat",
@@ -109,13 +111,18 @@ def getNetworkLocations( map ):
         if gir != None:
             x,y = map( gir[ 'longitude' ], gir[ 'latitude' ] )
             networkLatLon[ i ] = { 'xCoord': x, 'yCoord': y, 'cidr': cidr_ip }
+
+        f.close()
     return networkLatLon
         
 def main( PointsMap ):
 
     # Many server sites map to the same latitude and longitudes
     # Lets merge the duplicates
-    #PointsMap = mergeDuplicates( PointsMap )
+    PointsMap = mergeDuplicates( PointsMap )
+    print len( PointsMap.keys() )
+    for x,y in PointsMap.iteritems():
+        print x, y
 
     # Method provided by py_geo_voronoi, returns a dictionary
     # of dictionaries, each sub-dictionary carrying information 
@@ -127,7 +134,7 @@ def main( PointsMap ):
         PointsMap, BoundingBox="W", PlotMap=False )
 
     numVoronoiCells = len( voronoiLattice.keys() )
-    
+
     serverNames = []
     serialNum = []
     lat = []
@@ -173,12 +180,18 @@ def main( PointsMap ):
             bbox = dict(boxstyle = 'round,pad=0.5', fc = 'yellow', alpha = 1.5),
             arrowprops = dict(arrowstyle = '->', connectionstyle = 'arc3,rad=0'))
     '''
+
+    now = time.time()
     # Processing networks from Whois database
     # and getting each network's lat, long
     # Also get the cidr notation
     networkLatLon = getNetworkLocations( map )
 
+    print 'Time taken to run cidr stuff for 100 entries ' + \
+        str( time.time() - now )
+
     ax = plt.gca()
+
     # Plotting the Polygons returned by py_geo_voronoi
     voronoiPolygons = plotDiagramFromLattice( ax, voronoiLattice, map )
 
@@ -186,6 +199,7 @@ def main( PointsMap ):
     histogramData = histogramData.fromkeys( 
         range( 0, len( serverNames ) ), 0 )
 
+    # Writing the mapping of networks to servers to file
     pdnsFile = open( "pdns-config", "w" )
 
     for sNo, netDetail in networkLatLon.iteritems():
@@ -198,7 +212,6 @@ def main( PointsMap ):
                                     '127.0.0.' + str( serialNo ) + "\n" )
                 break
     pdnsFile.close()
-    #print histogramData
 
     totalNetworks = sum( [ y for (x, y) in histogramData.items() ] )
 

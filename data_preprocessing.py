@@ -78,6 +78,7 @@ def main():
 
     # Parsing geolist.txt to get the names and addresses of all servers
     serverDict = getServerNameAddr()
+    print len(serverDict.items())
 
     # Get locations of all servers
     serverDictLocation = getServerLocations( serverDict )
@@ -87,11 +88,16 @@ def main():
         if detail[ 'longitude' ] == 'NF':
             continue
         PointsMap[ name ] = ( detail[ 'longitude' ], detail[ 'latitude' ] )
+        
+    f = open( "location", "w" )
+    for name, location in PointsMap.iteritems():
+        f.write( name + ' ' + str( location[0] ) + ' ' +
+                 str( location[1] ) + '\n' )
+    f.close()
 
+    print len( PointsMap.items() )
+    
     server_locations.main( PointsMap )
         
-    #for name, url in serverDictLocation.iteritems():
-    #    print name, url
-
 if  __name__ == "__main__":
     main()
