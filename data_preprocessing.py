@@ -3,6 +3,85 @@
 import re, pygeoip
 import server_locations
 
+def parseXMLFile( name ):
+    file = open( name )
+    data = file.read()
+    dataLines = data.split( '\n' )
+
+    # Patterns to match
+    dirOpenPattern = re.compile(r'<Directory .*>', re.MULTILINE )
+    parentDirClosePattern = re.compile(r'^</Directory>', re.MULTILINE )
+    subDirClosePattern = re.compile(r'(\s)*</Directory>', re.MULTILINE )
+    regexName = re.compile( r'LocalSite .*', re.DOTALL|re.IGNORECASE )
+    regexURL = re.compile( r'HttpProxy .*', re.DOTALL|re.IGNORECASE )
+
+    parentDirFlag = False
+    subDirFlag = False
+    foundLocalSite = False
+    foundURLs = False
+
+    parentDirName = ''
+    subDirName = ''
+
+    list_domain_names = []
+    serverNamesDict = {}
+    
+    for line in dataLines:
+        if not parentDirFlag:
+            dirOpenMatch = dirOpenPattern.findall( line )
+            if dirOpenMatch:
+                parentDirFlag = True
+                parentDirName = dirOpenMatch[0].split( '"' )[1][1:3]
+                continue
+
+        if not subDirFlag and parentDirFlag:
+            assert parentDirFlag
+            # Each ParentDir has atleast one Subdir
+            dirOpenMatch = dirOpenPattern.findall( line )
+            if dirOpenMatch:
+                subDirFlag = True
+                continue
+
+        if not foundLocalSite and subDirFlag:
+            assert subDirFlag and parentDirFlag
+            matchName = regexName.findall( line )
+            
+            if matchName:
+                foundLocalSite = True
+                x = matchName[0]
+                x = x.split()[-1][1:-1]
+                subDirName = parentDirName + '/' + x
+                continue
+    
+        if not foundURLs and foundLocalSite:
+            assert foundLocalSite and subDirFlag and parentDirFlag
+            list_domain_URLs = []
+            matchURL = regexURL.findall( line ) 
+            if matchURL:
+                foundURLs = True
+                matchURL = matchURL[0]
+
+                pattern = r'http://.*?:'
+                regex = re.compile( pattern, re.DOTALL|re.IGNORECASE )
+                match = regex.findall( matchURL )
+                match = [ x[:-1] for x in match ]
+
+                serverNamesDict[ subDirName ] = match
+                continue
+
+        subDirCloseMatch = subDirClosePattern.findall( line )
+        if subDirCloseMatch:
+            subDirFlag = False
+            foundLocalSite = False
+            foundURLs = False
+
+        parentDirCloseMatch = parentDirClosePattern.findall( line )
+        if parentDirCloseMatch:
+            parentDirFlag = False
+            parentDirName = ''
+
+    return serverNamesDict
+
 def getServerNameAddr():
     patternName = r'LocalSite .*'
     patternURL = r'HttpProxy .*'
@@ -67,37 +146,37 @@ def getServerLocations( serverDict ):
             serverDictLocation[ name ] = \
             { 'url': urls, 'latitude': gir[ 'latitude' ], 
               'longitude': gir[ 'longitude' ] }
-        else:
-            # NF = Not Found
-            serverDictLocation[ name ] = \
-            { 'url': urls, 'latitude': "NF", 'longitude': "NF" }
+        #else:
+        #    # NF = Not Found
+        #    serverDictLocation[ name ] = \
+        #    { 'url': urls, 'latitude': "NF", 'longitude': "NF" }
 
     return serverDictLocation
 
 def main():
 
     # Parsing geolist.txt to get the names and addresses of all servers
-    serverDict = getServerNameAddr()
+    #serverDict = getServerNameAddr()
+    serverDict = parseXMLFile( "geolist.txt" )
     print len(serverDict.items())
 
     # Get locations of all servers
     serverDictLocation = getServerLocations( serverDict )
 
-    PointsMap = {}
-    for name, detail in serverDictLocation.iteritems():
-        if detail[ 'longitude' ] == 'NF':
-            continue
-        PointsMap[ name ] = ( detail[ 'longitude' ], detail[ 'latitude' ] )
-        
     f = open( "location", "w" )
-    for name, location in PointsMap.iteritems():
+    for name, detail in serverDictLocation.iteritems():
+        location = ( detail[ 'longitude' ], detail[ 'latitude' ] )
+        urls = detail[ 'url' ]
+        urlStr = ''
+        for url in urls:
+            urlStr = urlStr + ',' + url
         f.write( name + ' ' + str( location[0] ) + ' ' +
-                 str( location[1] ) + '\n' )
+                 str( location[1] ) + ' ' + urlStr + '\n' )
     f.close()
 
-    print len( PointsMap.items() )
+    print len( serverDictLocation.items() )
     
-    server_locations.main( PointsMap )
+    #server_locations.main( PointsMap )
         
 if  __name__ == "__main__":
     main()
